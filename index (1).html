@@ -1,0 +1,1295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#eef3ec" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111815" media="(prefers-color-scheme: dark)">
+<title>Signal Desk</title>
+<meta name="description" content="Buy, stop and sell levels for Binance spot from one fixed, tested rule. Reads public prices only.">
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231b2a4a'/%3E%3Cpath d='M9 6v20' stroke='%23c5d2c6' stroke-width='2'/%3E%3Cpath d='M4 10h10' stroke='%230ca30c' stroke-width='3'/%3E%3Cpath d='M4 24h10' stroke='%23d03b3b' stroke-width='3'/%3E%3Ccircle cx='9' cy='15' r='3.5' fill='%23fff'/%3E%3Cpath d='M18 22l5-7 3 4 3-9' stroke='%23fff' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --paper: #eef3ec;      /* ledger paper */
+  --surface: #fbfdfa;    /* ticket */
+  --ink: #1b2a4a;        /* blue-black ink */
+  --muted: #566277;
+  --rule: #cfdacf;
+  --rule-strong: #9fb3a3;
+  --good: #0ca30c;
+  --warn: #fab219;
+  --bad: #d03b3b;
+  --bad-ink: #a32020;
+  --focus: #2a78d6;
+  --hatch: rgba(250, 178, 25, 0.22);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #111815; --surface: #19221e; --ink: #e7eee9; --muted: #9fada5; --rule: #2a3a32; --rule-strong: #46604f;
+    --bad-ink: #f08a8a; --focus: #7db4f5; --hatch: rgba(250, 178, 25, 0.16);
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font: 400 16px/1.5 "Archivo", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-variant-numeric: lining-nums;
+}
+.page { max-width: 600px; margin: 0 auto; padding: 20px 16px 48px; padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+
+/* masthead */
+.mast { display: grid; grid-template-columns: 1fr; gap: 10px; padding-bottom: 14px; border-bottom: 3px double var(--rule-strong); }
+.mast .btn { justify-self: start; }
+.mast h1 { margin: 0; font-size: 30px; line-height: 1.05; font-weight: 780; font-stretch: 118%; letter-spacing: -0.015em; }
+.mast .lede { margin: 6px 0 0; color: var(--muted); font-size: 14.5px; line-height: 1.4; max-width: 34em; }
+.mast .status { margin: 0; font-size: 14px; color: var(--muted); min-height: 1.5em; }
+
+/* buttons and links */
+.btn { appearance: none; font: inherit; font-weight: 650; font-size: 15px; line-height: 1.2; min-height: 44px; padding: 10px 16px; border-radius: 6px; border: 1px solid var(--ink); background: var(--ink); color: var(--paper); cursor: pointer; }
+.btn:disabled { opacity: 0.6; cursor: default; }
+.btn-quiet { background: transparent; color: var(--ink); border-color: var(--rule-strong); }
+.link, a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.link { appearance: none; background: none; border: 0; padding: 0; font: inherit; cursor: pointer; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+
+/* notices */
+.notice { margin: 14px 0 0; padding: 12px 14px; border: 1px solid var(--rule-strong); border-radius: 6px; background: var(--surface); font-size: 15px; }
+.notice-error { border: 2px solid var(--bad); }
+.notice-demo { border: 2px solid var(--warn); background: repeating-linear-gradient(135deg, var(--hatch) 0 10px, transparent 10px 20px), var(--surface); }
+.notice-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+
+/* summary */
+.tally { margin: 18px 0 2px; font-size: 21px; line-height: 1.25; font-weight: 700; font-stretch: 106%; }
+.mood { margin: 0; color: var(--muted); font-size: 14.5px; }
+
+/* sections */
+section h2 { margin: 30px 0 10px; padding-bottom: 6px; font-size: 20px; line-height: 1.2; font-weight: 740; font-stretch: 112%; border-bottom: 3px double var(--rule-strong); }
+.sec-note { margin: -4px 0 10px; color: var(--muted); font-size: 14px; }
+.empty { margin: 0; color: var(--muted); }
+
+/* tickets */
+.ticket { background: var(--surface); border: 1px solid var(--rule-strong); border-radius: 6px; margin: 0 0 14px; }
+.ticket-sell { border: 2px solid var(--bad); }
+.t-head { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; padding: 14px 14px 12px; }
+.t-head h3 { margin: 0; font-size: 22px; line-height: 1.15; font-weight: 760; font-stretch: 108%; }
+.t-why { grid-column: 1 / -1; margin: 2px 0 0; font-size: 14.5px; color: var(--muted); }
+.t-body { display: grid; grid-template-columns: 86px 1fr; gap: 6px; padding: 12px 14px 4px 8px; border-top: 1px dashed var(--rule-strong); }
+.rows { margin: 0; }
+.row { padding: 7px 0 8px; border-bottom: 1px solid var(--rule); }
+.row:last-child { border-bottom: 0; }
+.row dt { font-size: 13px; color: var(--muted); line-height: 1.3; }
+.row dd { margin: 0; font-size: 16px; line-height: 1.3; }
+.row .sub { display: block; font-size: 13px; color: var(--muted); margin-top: 1px; }
+.fig { font-weight: 680; font-size: 19px; font-stretch: 92%; font-variant-numeric: tabular-nums lining-nums; }
+.t-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 14px 14px; }
+.t-record { margin: 0; padding: 10px 14px 12px; border-top: 1px solid var(--rule); font-size: 13.5px; color: var(--muted); }
+.tag { display: inline-block; vertical-align: 3px; margin-left: 4px; padding: 1px 7px; border: 1px solid var(--rule-strong); border-radius: 999px; font-size: 12px; font-weight: 600; font-stretch: 100%; color: var(--muted); }
+.warn-text { color: var(--bad-ink); font-size: 14.5px; }
+
+/* status chips: shape and word carry the meaning, colour supports it */
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 8px; border: 1px solid var(--rule-strong); border-radius: 999px; font-size: 14px; font-weight: 680; line-height: 1.2; white-space: nowrap; }
+.chip svg { flex: none; }
+.chip-buy svg { fill: var(--good); }
+.chip-watch svg { fill: var(--warn); stroke: var(--ink); stroke-width: 0.8; }
+.chip-hold svg { fill: none; stroke: var(--ink); stroke-width: 1.6; }
+.chip-none svg { fill: var(--muted); }
+.chip-none { color: var(--muted); font-weight: 600; }
+.chip-sell { background: var(--bad); border-color: var(--bad); color: #fff; }
+.chip-sell svg { fill: #fff; }
+
+/* price ladder */
+.ladder { display: block; }
+.l-axis { stroke: var(--rule-strong); stroke-width: 2; stroke-linecap: round; }
+.l-band { fill: var(--good); opacity: 0.3; }
+.l-max { stroke: var(--good); stroke-width: 3; stroke-linecap: round; }
+.l-stop { stroke: var(--bad); stroke-width: 3; stroke-linecap: round; }
+.l-exit { stroke: var(--ink); stroke-width: 2; stroke-dasharray: 4 3; }
+.l-entry { stroke: var(--muted); stroke-width: 2; stroke-linecap: round; }
+.l-now { fill: var(--ink); stroke: var(--surface); stroke-width: 2; }
+.l-lead { stroke: var(--rule-strong); stroke-width: 1; }
+.l-text { font-size: 11px; fill: var(--muted); font-family: inherit; }
+
+/* plain lines (watch, nothing to do) */
+.lines { list-style: none; margin: 0; padding: 0; }
+.line { padding: 10px 0 11px; border-bottom: 1px solid var(--rule); }
+.line:last-child { border-bottom: 0; }
+.line-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.line h3 { margin: 0; font-size: 17px; font-weight: 700; font-stretch: 106%; }
+.line p { margin: 4px 0 0; font-size: 14.5px; color: var(--muted); }
+.line p .fig { font-size: 16px; color: var(--ink); }
+details { border-bottom: 1px solid var(--rule); }
+details > summary { padding: 12px 0; font-weight: 650; cursor: pointer; }
+details[open] > summary { border-bottom: 1px solid var(--rule); }
+#howto details, #settings details { margin-top: 26px; border-top: 3px double var(--rule-strong); }
+
+/* forms */
+.form { padding: 4px 14px 14px; border-top: 1px dashed var(--rule-strong); }
+.form-settings { padding: 12px 0 14px; border-top: 0; }
+.form-title { margin: 10px 0 8px; font-size: 14.5px; color: var(--muted); }
+.form label { display: block; margin: 0 0 12px; font-size: 14px; font-weight: 600; }
+.form input, .form select { display: block; width: 100%; margin-top: 4px; min-height: 44px; padding: 8px 10px; font: inherit; font-size: 16px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ink); background: var(--surface); border: 1px solid var(--rule-strong); border-radius: 6px; }
+.form .hint { display: block; margin: 4px 0 0; font-size: 13px; font-weight: 400; color: var(--muted); }
+.form .hint.warn-text { color: var(--bad-ink); font-weight: 600; }
+.form p.hint { margin: 8px 0 0; }
+.form-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.form-error { margin: 10px 0 0; color: var(--bad-ink); font-size: 14.5px; font-weight: 600; }
+.sub-h { margin: 18px 0 4px; font-size: 16px; }
+.closed { margin: 6px 0 12px; padding-left: 18px; font-size: 14.5px; color: var(--muted); }
+
+/* record */
+#record p { margin: 0 0 10px; font-size: 15px; }
+.table-wrap { overflow-x: auto; margin: 4px 0 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 14.5px; font-variant-numeric: tabular-nums lining-nums; }
+th, td { text-align: left; padding: 7px 10px 7px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+thead th { font-weight: 650; border-bottom: 1px solid var(--rule-strong); color: var(--muted); font-size: 13px; }
+tbody th { font-weight: 600; }
+.plain { margin: 0; padding-left: 18px; font-size: 14.5px; color: var(--muted); }
+.plain li { margin-bottom: 6px; }
+.steps { margin: 12px 0 14px; padding-left: 22px; font-size: 15px; }
+.steps li { margin-bottom: 8px; }
+
+footer { margin-top: 30px; padding-top: 14px; border-top: 3px double var(--rule-strong); font-size: 13px; color: var(--muted); }
+footer p { margin: 0 0 6px; }
+@media (min-width: 520px) {
+  .t-body { grid-template-columns: 96px 1fr; padding-left: 14px; }
+  .mast { grid-template-columns: 1fr auto; column-gap: 12px; align-items: end; }
+  .mast h1 { font-size: 34px; }
+  .mast .btn { justify-self: end; }
+  .mast .status { grid-column: 1 / -1; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="mast">
+    <div>
+      <h1>Signal Desk</h1>
+      <p class="lede">Buy, stop and sell levels for Binance spot, from one fixed rule. It reads public prices and places no orders.</p>
+    </div>
+    <button class="btn" id="refresh" data-act="refresh">Check prices now</button>
+    <p class="status" id="status" role="status" aria-live="polite"></p>
+  </header>
+  <main>
+    <div id="notice"></div>
+    <div id="summary"></div>
+    <section id="alerts" aria-label="Sell"></section>
+    <section id="buys" aria-label="Buy"></section>
+    <section id="holds" aria-label="Your trades"></section>
+    <section id="watch" aria-label="Watch"></section>
+    <section id="others" aria-label="The rest"></section>
+    <section id="record" aria-label="How this rule has done"></section>
+    <section id="howto"></section>
+    <section id="settings"></section>
+  </main>
+  <footer>
+    <p>The rule: buy when a candle closes above the highest price of the last 20 candles and above the 50-EMA, while the 50-EMA is above the 200-EMA. Stop 3 ATR under that close. Sell when a candle closes under the 50-EMA.</p>
+    <p>These are levels from a fixed rule, not forecasts, and not financial advice. You can lose money on any trade. Your settings and trades are stored only in this browser.</p>
+  </footer>
+</div>
+<noscript><p style="padding:16px">Signal Desk needs JavaScript to read prices.</p></noscript>
+<script>
+/*
+ * Signal Desk engine. Pure functions: no network, no DOM.
+ * Works in the browser (window.SignalEngine) and in Node (module.exports).
+ *
+ * One long-only rule, evaluated on closed candles:
+ *   BUY   a candle closes above the highest high of the previous `lookback` candles and above
+ *         the 50-EMA, while the 50-EMA is above the 200-EMA
+ *   STOP  signal close minus `stopAtr` x ATR, kept as a resting stop order
+ *   SELL  when a candle closes under the 50-EMA
+ * history() replays exactly this rule over the loaded candles, with fees and slippage, so the
+ * page can show every signal next to the rule's own record.
+ */
+(function (root) {
+  'use strict';
+
+  var DEFAULTS = {
+    feePct: 0.1,        // exchange fee per side, percent
+    slipPct: 0.05,      // assumed slippage per fill in the replay, percent
+    atrPeriod: 14,
+    midEma: 50,         // exit line
+    trendEma: 200,      // trend filter
+    lookback: 20,       // candles that define the range high
+    stopAtr: 3,         // initial stop distance in ATR, measured from the signal close
+    maxFeeShare: 0.25,  // skip a trade whose round-trip fees exceed this share of the risked amount
+    buyZoneAtr: 0.5,    // still buyable while price <= signal close + buyZoneAtr * ATR
+    freshBars: 2,       // a signal stays current for this many closed candles
+    watchAtr: 0.75      // "watch" when price is within this many ATR under the range high
+  };
+
+  function merge(base, extra) {
+    var out = {}, k;
+    for (k in base) if (has(base, k)) out[k] = base[k];
+    if (extra) for (k in extra) if (has(extra, k) && extra[k] !== undefined && extra[k] !== null && extra[k] === extra[k]) out[k] = extra[k];
+    return out;
+  }
+  function has(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
+  function assign(a, b) { for (var k in b) if (has(b, k)) a[k] = b[k]; return a; }
+
+  // ---------- series ----------
+
+  /** Struct-of-arrays series from Binance kline rows (or [t,o,h,l,c,v] rows). */
+  function toSeries(rows) {
+    var n = rows.length, s = { n: n, t: new Array(n), o: new Array(n), h: new Array(n), l: new Array(n), c: new Array(n), v: new Array(n), ct: new Array(n) };
+    for (var i = 0; i < n; i++) {
+      var r = rows[i];
+      s.t[i] = +r[0]; s.o[i] = +r[1]; s.h[i] = +r[2]; s.l[i] = +r[3]; s.c[i] = +r[4]; s.v[i] = +r[5];
+      s.ct[i] = r.length > 6 ? +r[6] : NaN;
+    }
+    return s;
+  }
+
+  // ---------- indicators ----------
+
+  /** EMA seeded with the SMA of the first `period` values. */
+  function ema(values, period) {
+    var n = values.length, out = new Array(n), k = 2 / (period + 1), sum = 0;
+    for (var i = 0; i < n; i++) {
+      if (i < period - 1) { sum += values[i]; out[i] = NaN; }
+      else if (i === period - 1) { sum += values[i]; out[i] = sum / period; }
+      else out[i] = values[i] * k + out[i - 1] * (1 - k);
+    }
+    return out;
+  }
+
+  /** Wilder's ATR. */
+  function atr(s, period) {
+    var n = s.n, out = new Array(n), sum = 0, prev = NaN;
+    for (var i = 0; i < n; i++) {
+      var tr = i === 0 ? s.h[i] - s.l[i] : Math.max(s.h[i] - s.l[i], Math.abs(s.h[i] - s.c[i - 1]), Math.abs(s.l[i] - s.c[i - 1]));
+      if (i < period) { sum += tr; out[i] = i === period - 1 ? (prev = sum / period) : NaN; }
+      else { prev = (prev * (period - 1) + tr) / period; out[i] = prev; }
+    }
+    return out;
+  }
+
+  /** Highest value of the `period` items BEFORE index i (item i excluded). */
+  function priorMax(values, period) {
+    var n = values.length, out = new Array(n);
+    for (var i = 0; i < n; i++) {
+      if (i < period) { out[i] = NaN; continue; }
+      var m = -Infinity;
+      for (var j = i - period; j < i; j++) if (values[j] > m) m = values[j];
+      out[i] = m;
+    }
+    return out;
+  }
+
+  function indicators(s, cfg) {
+    return { mid: ema(s.c, cfg.midEma), trend: ema(s.c, cfg.trendEma), atr: atr(s, cfg.atrPeriod), rangeHigh: priorMax(s.h, cfg.lookback) };
+  }
+
+  function warmup(cfg) { return Math.max(cfg.trendEma, cfg.lookback + 1, cfg.atrPeriod + 1) + 10; }
+
+  /**
+   * Market filter. For each candle of `s`, true when the reference market (e.g. BTC) was in an
+   * uptrend on its latest candle at or before that time. Unknown stretches do not block.
+   */
+  function gateFrom(s, ref, refInd) {
+    var gate = new Array(s.n), j = 0;
+    for (var i = 0; i < s.n; i++) {
+      while (j + 1 < ref.n && ref.t[j + 1] <= s.t[i]) j++;
+      if (ref.t[j] > s.t[i] || !isFinite(refInd.trend[j]) || !isFinite(refInd.mid[j])) { gate[i] = true; continue; }
+      gate[i] = ref.c[j] > refInd.trend[j] && refInd.mid[j] > refInd.trend[j];
+    }
+    return gate;
+  }
+
+  // ---------- the rule ----------
+
+  function isUptrend(s, ind, i) { return s.c[i] > ind.trend[i] && ind.mid[i] > ind.trend[i]; }
+
+  /** Buy signal on closed candle i, or { rejected: 'fees' }, or null. */
+  function signalAt(s, ind, i, cfg) {
+    if (i < warmup(cfg) || i >= s.n) return null;
+    var c = s.c[i], a = ind.atr[i], level = ind.rangeHigh[i];
+    if (!(a > 0) || !isFinite(ind.trend[i]) || !isFinite(ind.mid[i]) || !isFinite(level)) return null;
+    if (ind.gate && ind.gate[i] === false) return null;
+    if (!(c > level && c > ind.mid[i] && isUptrend(s, ind, i))) return null;
+    var stop = c - cfg.stopAtr * a, share = (2 * cfg.feePct / 100 * c) / (c - stop);
+    var sig = { i: i, t: s.t[i], close: c, level: level, atr: a, stop: stop, buyCeiling: c + cfg.buyZoneAtr * a, feeShare: share };
+    if (share > cfg.maxFeeShare) sig.rejected = 'fees';
+    return sig;
+  }
+
+  // ---------- history: replay of the rule, with fees and slippage ----------
+
+  function emptyStats() { return { trades: 0, wins: 0, losses: 0, sumR: 0, sumWinR: 0, sumLossR: 0, bars: 0, feeSkips: 0, bestR: -Infinity, worstR: Infinity }; }
+  function finishStats(st) {
+    st.winRate = st.trades ? st.wins / st.trades : NaN;
+    st.avgR = st.trades ? st.sumR / st.trades : NaN;
+    st.profitFactor = st.sumLossR < 0 ? st.sumWinR / -st.sumLossR : (st.sumWinR > 0 ? Infinity : NaN);
+    st.avgBars = st.trades ? st.bars / st.trades : NaN;
+    return st;
+  }
+  function addTrade(st, tr) {
+    st.trades++; st.sumR += tr.netR; st.bars += tr.bars;
+    if (tr.netR > 0) { st.wins++; st.sumWinR += tr.netR; } else { st.losses++; st.sumLossR += tr.netR; }
+    if (tr.netR > st.bestR) st.bestR = tr.netR;
+    if (tr.netR < st.worstR) st.worstR = tr.netR;
+  }
+
+  /**
+   * Replay over closed candles up to lastClosed. One trade at a time.
+   * Fills: buy at the open of the candle after the signal (plus slippage), unless that open is already
+   * above the buy ceiling; the stop is a resting order (a gap through it fills at the open); a close
+   * under the 50-EMA sells at the next open (minus slippage).
+   * Returns closed trades, stats, and the rule's state at the end:
+   *   pending - a signal on the last closed candle, not filled yet
+   *   open    - a trade the rule would still be holding
+   *   exiting - open trade whose exit signal fired on the last closed candle
+   */
+  function history(s, ind, cfg, lastClosed) {
+    var end = Math.min(lastClosed === undefined ? s.n - 1 : lastClosed, s.n - 1);
+    var fee = cfg.feePct / 100, slip = cfg.slipPct / 100, trades = [], st = emptyStats(), out = { trades: trades, stats: st, pending: null, open: null };
+    var i = warmup(cfg);
+    while (i <= end) {
+      var sig = signalAt(s, ind, i, cfg);
+      if (!sig) { i++; continue; }
+      if (sig.rejected) { st.feeSkips++; i++; continue; }
+      var f = i + 1;
+      if (f > end) { out.pending = sig; break; }
+      var entry = s.o[f] * (1 + slip);
+      if (entry > sig.buyCeiling) { i++; continue; }            // opened above the buy zone: no trade
+      var risk = entry - sig.stop;
+      if (!(risk > 0)) { i++; continue; }
+      var exit = NaN, kind = null, j = f, exitSignal = -1;
+      for (; j <= end; j++) {
+        if (j > f && s.o[j] <= sig.stop) { exit = s.o[j]; kind = 'stop'; break; }
+        if (s.l[j] <= sig.stop) { exit = sig.stop; kind = 'stop'; break; }
+        if (s.c[j] < ind.mid[j]) {
+          exitSignal = j;
+          if (j + 1 > end) break;                               // sell signal on the last closed candle
+          exit = s.o[j + 1] * (1 - slip); kind = 'rule'; j = j + 1; break;
+        }
+      }
+      if (kind === null) {
+        out.open = { signal: sig, fillIndex: f, entry: entry, stop: sig.stop, risk: risk, exiting: exitSignal === end, bars: end - f + 1 };
+        break;
+      }
+      var tr = { i: i, f: f, j: j, t: s.t[f], tExit: s.t[j], entry: entry, stop: sig.stop, exitPrice: exit, exit: kind, bars: j - f,
+        netR: (exit - entry) / risk - (entry * fee + exit * fee) / risk, retPct: (exit / entry - 1) * 100 - 2 * cfg.feePct };
+      trades.push(tr); addTrade(st, tr);
+      i = j + 1;
+    }
+    finishStats(st);
+    out.from = s.t[Math.min(warmup(cfg), s.n - 1)]; out.to = s.t[end];
+    return out;
+  }
+
+  function combineStats(list) {
+    var out = emptyStats();
+    for (var x = 0; x < list.length; x++) {
+      var st = list[x]; if (!st) continue;
+      out.trades += st.trades; out.wins += st.wins; out.losses += st.losses; out.sumR += st.sumR;
+      out.sumWinR += st.sumWinR; out.sumLossR += st.sumLossR; out.bars += st.bars; out.feeSkips += st.feeSkips;
+      if (st.bestR > out.bestR) out.bestR = st.bestR;
+      if (st.worstR < out.worstR) out.worstR = st.worstR;
+    }
+    return finishStats(out);
+  }
+
+  /** Plain-words verdict on a record. */
+  function verdict(st) {
+    if (!st || !st.trades) return { key: 'none', text: 'No finished trades in this stretch' };
+    if (st.trades < 20) return { key: 'thin', text: 'Too few trades to judge' };
+    if (st.avgR > 0.1) return { key: 'pos', text: 'Made money in this stretch' };
+    if (st.avgR < -0.1) return { key: 'neg', text: 'Lost money in this stretch' };
+    return { key: 'flat', text: 'About break-even in this stretch' };
+  }
+
+  // ---------- live state ----------
+
+  function lastClosedIndex(s, nowMs) {
+    var n = s.n;
+    if (n === 0) return -1;
+    var ct = s.ct[n - 1];
+    if (isFinite(ct) && nowMs !== undefined && ct > nowMs) return n - 2;
+    return n - 1;
+  }
+
+  /**
+   * What the rule says about this market right now.
+   * status: 'buy' | 'missed' | 'running' | 'watch' | 'none' | 'short'
+   */
+  function evaluate(s, ind, cfg, nowMs, hist) {
+    var lc = lastClosedIndex(s, nowMs), n = s.n;
+    if (lc < warmup(cfg) + 1) return { status: 'short', reason: 'Not enough price history for this market yet' };
+    hist = hist || history(s, ind, cfg, lc);
+    var price = s.c[n - 1], a = ind.atr[lc], up = isUptrend(s, ind, lc);
+    var rangeHighNow = -Infinity;
+    for (var g = Math.max(0, lc - cfg.lookback + 1); g <= lc; g++) if (s.h[g] > rangeHighNow) rangeHighNow = s.h[g];
+    var base = { price: price, atr: a, lastClosed: lc, trendUp: up, ema200: ind.trend[lc], exitLine: ind.mid[lc], rangeHigh: rangeHighNow, candleTime: s.t[lc] };
+
+    if (ind.gate && ind.gate[lc] === false && !hist.open) {
+      return assign(base, { status: 'none', gated: true, reason: 'Market filter is on and Bitcoin is in a downtrend, so new buys are switched off' });
+    }
+
+    var sig = hist.pending || (hist.open ? hist.open.signal : null);
+    if (sig) {
+      var age = lc - sig.i;                                     // closed candles since the signal candle
+      var common = { signalTime: s.t[sig.i], signalClose: sig.close, level: sig.level, stop: sig.stop, buyCeiling: sig.buyCeiling, barsAgo: age, feeShare: sig.feeShare };
+      if (hist.open && hist.open.exiting) {
+        return assign(base, assign(common, { status: 'none', reason: 'The last move just ended: a candle closed under the 50-EMA. No buy' }));
+      }
+      var dead = price <= sig.stop;
+      if (dead) return assign(base, assign(common, { status: 'none', reason: 'The last buy signal failed: price has fallen to its stop' }));
+      if (age < cfg.freshBars) {
+        if (price < base.exitLine) {
+          return assign(base, assign(common, { status: 'none', reason: 'The buy signal faded: price is back under the sell line. No buy' }));
+        }
+        if (price <= sig.buyCeiling) {
+          return assign(base, assign(common, { status: 'buy', reason: 'A candle closed above the highest price of the last ' + cfg.lookback + ' candles, and the trend is up' }));
+        }
+        return assign(base, assign(common, { status: 'missed', reason: 'A buy signal fired, but price is already above the buy zone. Do not chase it' }));
+      }
+      if (hist.open) {
+        return assign(base, assign(common, { status: 'running', entry: hist.open.entry, bars: hist.open.bars,
+          reason: 'The rule bought this move ' + hist.open.bars + ' candles ago. Too late for a fresh buy; wait for the next signal' }));
+      }
+    }
+
+    if (up && isFinite(rangeHighNow) && rangeHighNow > ind.mid[lc] && (rangeHighNow - price) <= cfg.watchAtr * a) {
+      var stopW = rangeHighNow - cfg.stopAtr * a, shareW = (2 * cfg.feePct / 100 * rangeHighNow) / (rangeHighNow - stopW);
+      if (shareW <= cfg.maxFeeShare) {
+        var above = price > rangeHighNow;
+        return assign(base, { status: 'watch', trigger: rangeHighNow, stop: stopW, feeShare: shareW, above: above,
+          reason: above ? 'Uptrend, trading above its ' + cfg.lookback + '-candle high. It becomes a buy only if this candle closes above the trigger'
+                        : 'Uptrend, close to its ' + cfg.lookback + '-candle high. Buy only if a candle closes above the trigger' });
+      }
+    }
+
+    var reason;
+    if (!up) reason = s.c[lc] <= ind.trend[lc] ? 'Downtrend: price is under its 200-EMA. This rule only buys uptrends' : 'No clear uptrend yet: the 50-EMA is under the 200-EMA';
+    else {
+      var gap = (rangeHighNow / price - 1) * 100;
+      reason = isFinite(gap) && gap > 0 ? 'Uptrend, but ' + gap.toFixed(1) + '% under its ' + cfg.lookback + '-candle high. Nothing to do yet' : 'Uptrend, but no setup right now';
+    }
+    return assign(base, { status: 'none', reason: reason });
+  }
+
+  // ---------- a trade the user is holding ----------
+
+  /**
+   * pos: { t (entry time, ms), entry, stop, qty }
+   * status: 'stopped' (price traded at or under the stop) | 'sell' (a candle closed under the 50-EMA) | 'hold'
+   */
+  function managePosition(s, ind, cfg, pos, nowMs) {
+    var lc = lastClosedIndex(s, nowMs), n = s.n, price = s.c[n - 1];
+    var f = 0;
+    while (f < n - 1 && s.t[f + 1] <= pos.t) f++;              // candle that contains the entry time
+    var out = { price: price, exitLine: ind.mid[lc], stop: pos.stop, entry: pos.entry, held: Math.max(0, lc - f + 1), status: 'hold' };
+    out.pnlPct = (price / pos.entry - 1) * 100;
+    out.r = pos.entry > pos.stop ? (price - pos.entry) / (pos.entry - pos.stop) : NaN;
+    if (pos.t < s.t[0]) out.partial = true;                    // bought before the loaded candles begin
+    for (var j = f; j < n; j++) {
+      if (j > f && s.l[j] <= pos.stop) { out.status = 'stopped'; out.eventTime = s.t[j]; return out; }
+      if (j <= lc && s.c[j] < ind.mid[j] && (isFinite(s.ct[j]) ? s.ct[j] : s.t[j]) >= pos.t) { out.status = 'sell'; out.eventTime = s.t[j]; return out; }
+    }
+    if (price <= pos.stop) { out.status = 'stopped'; out.eventTime = s.t[n - 1]; }
+    return out;
+  }
+
+  // ---------- sizing ----------
+
+  function decimalsOf(step) {
+    if (!(step > 0)) return 8;
+    var str = String(step);
+    if (str.indexOf('e-') !== -1) return parseInt(str.split('e-')[1], 10) + (str.split('e-')[0].split('.')[1] || '').length;
+    var p = str.indexOf('.');
+    return p === -1 ? 0 : str.replace(/0+$/, '').length - p - 1;
+  }
+  function roundTo(x, step, mode) {
+    if (!(step > 0)) return x;
+    var q = x / step, d = decimalsOf(step);
+    var r = mode === 'down' ? Math.floor(q + 1e-9) : mode === 'up' ? Math.ceil(q - 1e-9) : Math.round(q);
+    return +(r * step).toFixed(d);
+  }
+
+  /**
+   * Order ticket. Sized for the worst allowed fill (the buy ceiling), so a better fill only lowers the risk.
+   * levels: { buyCeiling, stop }   account: { pot, riskPct, feePct }   market: { tickSize, stepSize, minNotional }
+   */
+  function plan(levels, account, market) {
+    market = market || {};
+    var tick = market.tickSize, step = market.stepSize, fee = (account.feePct || 0) / 100;
+    var maxBuy = roundTo(levels.buyCeiling, tick, 'down'), stop = roundTo(levels.stop, tick, 'down');
+    var out = { maxBuy: maxBuy, stop: stop, stopLimit: roundTo(stop * 0.99, tick, 'down'), ok: false };
+    var risk = maxBuy - stop;
+    if (!(risk > 0)) { out.problem = 'The stop is too close for this market\'s price step'; return out; }
+    out.stopDistPct = risk / maxBuy * 100;
+    var pot = +account.pot, riskMoney = pot * (account.riskPct / 100);
+    if (!(pot > 0) || !(riskMoney > 0)) { out.problem = 'Set your pot and risk per trade in Settings to get a size'; return out; }
+    var lossPerUnit = risk + (maxBuy + stop) * fee;
+    var qty = riskMoney / lossPerUnit, capped = false, maxQty = pot / (maxBuy * (1 + fee));
+    if (qty > maxQty) { qty = maxQty; capped = true; }
+    if (step > 0) qty = roundTo(qty, step, 'down');
+    out.qty = qty; out.capped = capped; out.cost = qty * maxBuy;
+    // what is left to sell after Binance takes its fee in the coin, in whole lot steps
+    out.sellQty = step > 0 ? roundTo(qty * (1 - fee), step, 'down') : qty * (1 - fee);
+    if (!(qty > 0) || (market.minQty > 0 && qty < market.minQty)) { out.problem = 'Your pot is too small for the smallest order in this market'; return out; }
+    if (market.minNotional > 0 && (out.cost < market.minNotional || out.sellQty * out.stopLimit < market.minNotional)) {
+      out.problem = 'Too small to place: Binance has a minimum of ' + market.minNotional + ' USDT per order here, and the stop order has to clear it too. A larger pot or risk setting would allow it';
+      return out;
+    }
+    out.lossAtStop = qty * risk + qty * (maxBuy + stop) * fee;
+    out.potRiskPct = out.lossAtStop / pot * 100;
+    out.potSharePct = out.cost / pot * 100;
+    out.ok = true;
+    return out;
+  }
+
+  var INTERVAL_MS = { '15m': 900000, '30m': 1800000, '1h': 3600000, '2h': 7200000, '4h': 14400000, '6h': 21600000, '12h': 43200000, '1d': 86400000 };
+
+  var api = {
+    DEFAULTS: DEFAULTS, INTERVAL_MS: INTERVAL_MS, merge: merge, toSeries: toSeries, ema: ema, atr: atr, priorMax: priorMax,
+    indicators: indicators, warmup: warmup, gateFrom: gateFrom, isUptrend: isUptrend, signalAt: signalAt, history: history,
+    combineStats: combineStats, verdict: verdict, lastClosedIndex: lastClosedIndex, evaluate: evaluate,
+    managePosition: managePosition, plan: plan, roundTo: roundTo, decimalsOf: decimalsOf
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.SignalEngine = api;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+/*
+ * Signal Desk data access: public Binance market data only. No API key, no login, no orders.
+ * Tries Binance's REST hosts in turn; if a browser blocks all of them, falls back to Binance's
+ * WebSocket API, which serves the same public data.
+ */
+(function (root) {
+  'use strict';
+
+  var REST_BASES = [
+    'https://data-api.binance.vision', 'https://api.binance.com', 'https://api-gcp.binance.com',
+    'https://api1.binance.com', 'https://api2.binance.com', 'https://api3.binance.com', 'https://api4.binance.com'
+  ];
+  var WS_URLS = ['wss://ws-api.binance.com:443/ws-api/v3', 'wss://ws-api.binance.com:9443/ws-api/v3'];
+  var WS_METHOD = { '/api/v3/klines': 'klines', '/api/v3/ticker/24hr': 'ticker.24hr', '/api/v3/exchangeInfo': 'exchangeInfo', '/api/v3/time': 'time' };
+  var TIMEOUT_MS = 12000;
+
+  var mode = 'rest', baseIndex = 0, ws = null, wsReady = null, wsSeq = 0, wsWaiting = {};
+
+  function ApiError(message, code, kind) { this.name = 'ApiError'; this.message = message; this.code = code; this.kind = kind || 'api'; }
+  ApiError.prototype = Object.create(Error.prototype);
+
+  function query(params) {
+    var parts = [];
+    for (var k in params) {
+      if (!Object.prototype.hasOwnProperty.call(params, k) || params[k] === undefined || params[k] === null) continue;
+      var v = params[k];
+      parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(Array.isArray(v) ? JSON.stringify(v) : v));
+    }
+    return parts.length ? '?' + parts.join('&') : '';
+  }
+
+  function restOnce(base, path, params) {
+    var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, TIMEOUT_MS);
+    return fetch(base + path + query(params), { method: 'GET', signal: ctrl ? ctrl.signal : undefined, cache: 'no-store' }).then(function (res) {
+      clearTimeout(timer);
+      if (res.ok) return res.json();
+      return res.json().catch(function () { return {}; }).then(function (body) {
+        var kind = res.status === 429 || res.status === 418 ? 'limit' : (res.status === 451 || res.status === 403) ? 'blocked' : 'api';
+        throw new ApiError(body && body.msg ? body.msg : 'Binance answered ' + res.status, body && body.code !== undefined ? body.code : res.status, kind);
+      });
+    }, function (err) { clearTimeout(timer); throw new ApiError(err && err.name === 'AbortError' ? 'Timed out' : 'Could not connect', 0, 'network'); });
+  }
+
+  /** Try each REST host, starting from the one that last worked. Logical API errors are not retried. */
+  function rest(path, params) {
+    var tried = 0;
+    function attempt() {
+      var idx = (baseIndex + tried) % REST_BASES.length;
+      return restOnce(REST_BASES[idx], path, params).then(function (data) { baseIndex = idx; return data; }, function (err) {
+        if (err.kind === 'api' || err.kind === 'limit') throw err;
+        tried++;
+        if (tried >= REST_BASES.length) throw err;
+        return attempt();
+      });
+    }
+    return attempt();
+  }
+
+  function openWs() {
+    if (wsReady) return wsReady;
+    wsReady = new Promise(function (resolve, reject) {
+      var i = 0;
+      function tryNext() {
+        if (i >= WS_URLS.length) { wsReady = null; reject(new ApiError('Could not connect', 0, 'network')); return; }
+        var sock;
+        try { sock = new WebSocket(WS_URLS[i++]); } catch (e) { tryNext(); return; }
+        var opened = false, timer = setTimeout(function () { if (!opened) { try { sock.close(); } catch (e) {} tryNext(); } }, TIMEOUT_MS);
+        sock.onopen = function () { opened = true; clearTimeout(timer); ws = sock; resolve(sock); };
+        sock.onerror = function () { if (!opened) { clearTimeout(timer); tryNext(); } };
+        sock.onclose = function () {
+          if (ws === sock) { ws = null; wsReady = null; }
+          for (var id in wsWaiting) { wsWaiting[id].reject(new ApiError('Connection closed', 0, 'network')); delete wsWaiting[id]; }
+        };
+        sock.onmessage = function (ev) {
+          var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
+          var w = wsWaiting[msg.id]; if (!w) return;
+          delete wsWaiting[msg.id]; clearTimeout(w.timer);
+          if (msg.status === 200) w.resolve(msg.result);
+          else w.reject(new ApiError(msg.error && msg.error.msg ? msg.error.msg : 'Binance answered ' + msg.status, msg.error ? msg.error.code : msg.status, msg.status === 429 || msg.status === 418 ? 'limit' : 'api'));
+        };
+      }
+      tryNext();
+    });
+    return wsReady;
+  }
+
+  function viaWs(path, params) {
+    return openWs().then(function (sock) {
+      return new Promise(function (resolve, reject) {
+        var id = 'sd' + (++wsSeq), clean = {};
+        for (var k in params) if (Object.prototype.hasOwnProperty.call(params, k) && params[k] !== undefined && params[k] !== null) clean[k] = params[k];
+        var timer = setTimeout(function () { delete wsWaiting[id]; reject(new ApiError('Timed out', 0, 'network')); }, TIMEOUT_MS);
+        wsWaiting[id] = { resolve: resolve, reject: reject, timer: timer };
+        sock.send(JSON.stringify({ id: id, method: WS_METHOD[path], params: clean }));
+      });
+    });
+  }
+
+  function request(path, params) {
+    params = params || {};
+    if (mode === 'ws') return viaWs(path, params);
+    return rest(path, params).catch(function (err) {
+      if (err.kind === 'api' || err.kind === 'limit') throw err;
+      // every REST host failed to connect (offline, blocked, or the browser refused): try the WebSocket API
+      return viaWs(path, params).then(function (data) { mode = 'ws'; return data; }, function () { throw err; });
+    });
+  }
+
+  /** 24h statistics for every trading symbol (compact form). */
+  function tickers() {
+    return request('/api/v3/ticker/24hr', { type: 'MINI', symbolStatus: 'TRADING' }).catch(function (err) {
+      if (err.kind !== 'api') throw err;
+      return request('/api/v3/ticker/24hr', { type: 'MINI' });   // older deployments may not know symbolStatus
+    });
+  }
+
+  /** Candles, oldest first. Rows as Binance sends them: [openTime, o, h, l, c, v, closeTime, ...]. */
+  function klines(symbol, interval, limit) { return request('/api/v3/klines', { symbol: symbol, interval: interval, limit: limit }); }
+
+  /** Price step, lot step and minimum order for the given symbols. Unknown symbols are simply missing. */
+  function exchangeInfo(symbols) {
+    if (!symbols.length) return Promise.resolve({});
+    return request('/api/v3/exchangeInfo', { symbols: symbols }).then(parseInfo, function (err) {
+      if (err.kind !== 'api' || symbols.length === 1) { if (err.kind === 'api') return {}; throw err; }
+      // one bad symbol fails the whole call: ask one by one
+      var out = {};
+      return symbols.reduce(function (p, sym) {
+        return p.then(function () { return request('/api/v3/exchangeInfo', { symbol: sym }).then(function (d) { var one = parseInfo(d); for (var k in one) out[k] = one[k]; }, function (e) { if (e.kind !== 'api') throw e; }); });
+      }, Promise.resolve()).then(function () { return out; });
+    });
+  }
+
+  function parseInfo(data) {
+    var out = {}, list = (data && data.symbols) || [];
+    for (var i = 0; i < list.length; i++) {
+      var s = list[i], m = { symbol: s.symbol, base: s.baseAsset, quote: s.quoteAsset, status: s.status };
+      var f = s.filters || [];
+      for (var j = 0; j < f.length; j++) {
+        if (f[j].filterType === 'PRICE_FILTER') m.tickSize = +f[j].tickSize;
+        else if (f[j].filterType === 'LOT_SIZE') { m.stepSize = +f[j].stepSize; m.minQty = +f[j].minQty; }
+        else if (f[j].filterType === 'NOTIONAL' || f[j].filterType === 'MIN_NOTIONAL') m.minNotional = +f[j].minNotional;
+      }
+      out[s.symbol] = m;
+    }
+    return out;
+  }
+
+  var api = { tickers: tickers, klines: klines, exchangeInfo: exchangeInfo, parseInfo: parseInfo, ApiError: ApiError, mode: function () { return mode; }, _query: query };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.SignalData = api;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+/* Signal Desk page logic. Reads public Binance prices, applies the rule, shows what to do. Places no orders. */
+(function () {
+  'use strict';
+  var E = window.SignalEngine, D = window.SignalData;
+  var STORE = 'signalDesk.v1';
+  var CANDLES = 1000;
+  var NOT_COINS = { USDC: 1, FDUSD: 1, TUSD: 1, USDP: 1, DAI: 1, BUSD: 1, EUR: 1, EURI: 1, AEUR: 1, USD1: 1, USDE: 1, PYUSD: 1, XUSD: 1, BFUSD: 1, RLUSD: 1, GBP: 1, AUD: 1, WBTC: 1, WBETH: 1, BNSOL: 1, U: 1 };
+  // Binance "bStocks" tokens (stock ticker + B), as named in Binance's listing notices, June to August 2026.
+  var STOCK_BASES = ['NVDAB', 'TSLAB', 'CRCLB', 'MUB', 'SNDKB', 'SPCXB', 'AMDB', 'EWYB', 'INTCB', 'MSTRB', 'LITEB', 'METAB', 'MSFTB', 'PLTRB', 'QQQB',
+    'CBRSB', 'COINB', 'DRAMB', 'GLWB', 'GOOGLB', 'SPYB', 'AXTIB', 'CRWVB', 'INTWB', 'KORUB', 'MUUB', 'MVLLB', 'ORCLB', 'QNTB', 'SNXXB', 'TQQQB',
+    'ALABB', 'ASMLB', 'ASTSB', 'BMNRB', 'COHRB', 'CRDOB', 'IRENB', 'NFLXB', 'SMCIB', 'USARB', 'BNCB'];
+  // The add button offers large single companies and index funds only, never the leveraged funds in the list above.
+  var STOCK_PICKS = ['NVDAB', 'TSLAB', 'MSFTB', 'METAB', 'GOOGLB', 'AMDB', 'PLTRB', 'COINB', 'MSTRB', 'QQQB', 'SPYB', 'MUB', 'INTCB', 'ORCLB', 'NFLXB', 'ASMLB'];
+  var STOCK_MIN_VOL = 1e6, STOCK_MAX = 10;
+  var INTERVAL_NAME = { '1h': '1-hour', '2h': '2-hour', '4h': '4-hour', '1d': 'daily' };
+  var INTERVAL_SHORT = { '1h': '1h', '2h': '2h', '4h': '4h', '1d': '1-day' };
+
+  var state = {
+    settings: { pot: '', riskPct: 1, feePct: 0.1, interval: '4h', topN: 25, minVolM: 10, watch: [] },
+    positions: [], closed: [],
+    rows: {}, info: {}, tickers: {}, markets: [], held: [],
+    status: 'idle', error: null, demo: false, lastUpdate: 0, progress: '', btc: null, open: {}, form: null, skew: 0, dirty: false, again: false, canStore: true
+  };
+
+  // ---------- storage ----------
+  function storageWorks() {
+    try { var k = STORE + '.probe'; window.localStorage.setItem(k, '1'); window.localStorage.removeItem(k); return true; } catch (e) { return false; }
+  }
+  function load() {
+    try {
+      var raw = window.localStorage.getItem(STORE);
+      if (!raw) return;
+      var d = JSON.parse(raw);
+      if (d.settings) for (var k in state.settings) if (d.settings[k] !== undefined) state.settings[k] = d.settings[k];
+      if (Array.isArray(d.positions)) state.positions = d.positions;
+      if (Array.isArray(d.closed)) state.closed = d.closed;
+    } catch (e) { /* storage unavailable: run without it */ }
+  }
+  function save() {
+    try { window.localStorage.setItem(STORE, JSON.stringify({ settings: state.settings, positions: state.positions, closed: state.closed })); } catch (e) { /* ignore */ }
+  }
+
+  // ---------- formatting ----------
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function group(str) { var p = str.split('.'); p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ','); return p.join('.'); }
+  function price(x, tick) {
+    if (!isFinite(x)) return 'n/a';
+    if (tick > 0) return group(x.toFixed(E.decimalsOf(tick)));
+    var a = Math.abs(x), d = a >= 1000 ? 2 : a >= 1 ? 4 : a >= 0.01 ? 6 : 8;
+    return group(x.toFixed(d));
+  }
+  function qty(x, step) { if (!isFinite(x)) return 'n/a'; return group(step > 0 ? x.toFixed(E.decimalsOf(step)) : (+x.toPrecision(6)).toString()); }
+  function money(x) { return isFinite(x) ? group(Math.abs(x).toFixed(2)) : 'n/a'; }
+  function pct(x, signed) { if (!isFinite(x)) return 'n/a'; return (signed && x > 0 ? '+' : '') + x.toFixed(1).replace('-', '−') + '%'; }
+  function rmult(x) { if (!isFinite(x)) return 'n/a'; return (x > 0 ? '+' : '') + x.toFixed(2).replace('-', '−') + 'R'; }
+  function now() { return Date.now() + state.skew; }
+  /** Device clock error against Binance, read from the freshest ticker. Ignored when small or implausible. */
+  function setSkew(list) {
+    var latest = 0;
+    for (var i = 0; i < list.length; i++) { var c = +list[i].closeTime; if (c > latest) latest = c; }
+    var d = latest - Date.now();
+    state.skew = latest > 0 && Math.abs(d) > 30000 && Math.abs(d) < 86400000 ? d : 0;
+  }
+  function ago(ms) {
+    var m = Math.max(0, Math.round((now() - ms) / 60000));
+    if (m < 1) return 'just now';
+    if (m < 60) return m + ' min ago';
+    var h = Math.floor(m / 60);
+    if (h < 48) return h + ' h ' + (m % 60 ? (m % 60) + ' min ' : '') + 'ago';
+    return Math.floor(h / 24) + ' days ago';
+  }
+  function until(ms) {
+    var m = Math.max(0, Math.round((ms - now()) / 60000));
+    if (m < 60) return m + ' min';
+    return Math.floor(m / 60) + ' h ' + (m % 60) + ' min';
+  }
+  function clock(ms) {
+    var d = new Date(ms), now = new Date(), t = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+    if (d.toDateString() === now.toDateString()) return t;
+    return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }) + ', ' + t;
+  }
+  function pair(sym) {
+    var inf = state.info[sym];
+    if (inf && inf.base) return { base: inf.base, quote: inf.quote };
+    var m = /^(.+?)(USDT|USDC|FDUSD|BTC|ETH|BNB)$/.exec(sym);
+    return m ? { base: m[1], quote: m[2] } : { base: sym, quote: '' };
+  }
+  function name(sym) { var p = pair(sym); return p.quote ? p.base + '/' + p.quote : p.base; }
+  function isStock(sym) { return /USDT$/.test(sym) && STOCK_BASES.indexOf(sym.slice(0, -4)) !== -1; }
+  function cfg() { return E.merge(E.DEFAULTS, { feePct: +state.settings.feePct }); }
+  function account() { return { pot: +state.settings.pot, riskPct: +state.settings.riskPct, feePct: +state.settings.feePct }; }
+
+  // ---------- loading ----------
+  function key(sym, interval) { return sym + '|' + interval; }
+
+  function pickUniverse(list) {
+    var minQ = (+state.settings.minVolM || 0) * 1e6, out = [], seen = {};
+    list.forEach(function (t) { state.tickers[t.symbol] = t; });
+    var usdt = list.filter(function (t) {
+      if (!/USDT$/.test(t.symbol)) return false;
+      var base = t.symbol.slice(0, -4);
+      return !NOT_COINS[base] && +t.quoteVolume >= minQ && +t.lastPrice > 0;
+    }).sort(function (a, b) { return b.quoteVolume - a.quoteVolume; }).slice(0, +state.settings.topN || 25);
+    usdt.forEach(function (t) { if (!seen[t.symbol]) { seen[t.symbol] = 1; out.push(t.symbol); } });
+    (state.settings.watch || []).forEach(function (s) { if (state.tickers[s] && !seen[s]) { seen[s] = 1; out.push(s); } });
+    if (state.tickers.BTCUSDT && !seen.BTCUSDT) { seen.BTCUSDT = 1; out.push('BTCUSDT'); }
+    return out;
+  }
+
+  function mergeRows(old, fresh, intervalMs) {
+    if (!old || !old.length || !fresh.length) return fresh.length >= 300 ? fresh : null;
+    var lastOld = +old[old.length - 1][0], firstNew = +fresh[0][0];
+    if (firstNew > lastOld + intervalMs) return null;              // gap: need a full reload
+    var out = old.slice();
+    for (var i = 0; i < fresh.length; i++) {
+      var t = +fresh[i][0], pos = out.length - 1;
+      while (pos >= 0 && +out[pos][0] > t) pos--;
+      if (pos >= 0 && +out[pos][0] === t) out[pos] = fresh[i]; else out.splice(pos + 1, 0, fresh[i]);
+    }
+    return out.length > CANDLES ? out.slice(out.length - CANDLES) : out;
+  }
+
+  function loadCandles(sym, interval) {
+    var k = key(sym, interval), have = state.rows[k], ms = E.INTERVAL_MS[interval];
+    var stale = !have || have.length < 300 || (now() - +have[have.length - 1][0]) > 3 * ms;
+    if (stale) return D.klines(sym, interval, CANDLES).then(function (r) { state.rows[k] = r; });
+    return D.klines(sym, interval, 5).then(function (r) {
+      var merged = mergeRows(have, r, ms);
+      if (merged) { state.rows[k] = merged; return; }
+      return D.klines(sym, interval, CANDLES).then(function (full) { state.rows[k] = full; });
+    });
+  }
+
+  function pool(items, size, fn, onStep) {
+    var i = 0, done = 0, failed = [];
+    function next() {
+      if (i >= items.length) return Promise.resolve();
+      var it = items[i++];
+      return fn(it).then(function () { done++; if (onStep) onStep(done, items.length); }, function (err) {
+        if (err && err.kind === 'api') { failed.push(it); done++; return; }   // e.g. a symbol that does not exist
+        throw err;
+      }).then(next);
+    }
+    var runners = [];
+    for (var r = 0; r < Math.min(size, items.length); r++) runners.push(next());
+    return Promise.all(runners).then(function () { return failed; });
+  }
+
+  function scan() {
+    if (state.status === 'loading') { state.again = true; return Promise.resolve(); }
+    state.status = 'loading'; state.error = null; state.progress = 'Asking Binance for prices'; renderStatus();
+    var interval = state.settings.interval, universe;
+    var source = state.demo ? Promise.resolve(demoTickers()) : D.tickers();
+    return source.then(function (list) {
+      if (state.demo) state.skew = 0; else setSkew(list);
+      universe = pickUniverse(list);
+      var missing = universe.concat(state.positions.map(function (p) { return p.symbol; })).filter(function (s, i, a) { return !state.info[s] && a.indexOf(s) === i && state.tickers[s]; });
+      return state.demo ? null : D.exchangeInfo(missing).then(function (inf) { for (var k in inf) state.info[k] = inf[k]; });
+    }).then(function () {
+      var jobs = universe.map(function (s) { return { sym: s, interval: interval }; });
+      state.positions.forEach(function (p) {
+        if (!state.tickers[p.symbol]) return;
+        if (!jobs.some(function (j) { return j.sym === p.symbol && j.interval === p.interval; })) jobs.push({ sym: p.symbol, interval: p.interval });
+      });
+      if (state.demo) { jobs.forEach(function (j) { state.rows[key(j.sym, j.interval)] = demoCandles(j.sym, j.interval); }); return; }
+      return pool(jobs, jobs.length > 60 ? 6 : 4, function (j) { return loadCandles(j.sym, j.interval); }, function (d, n) { state.progress = 'Reading price history, ' + d + ' of ' + n; renderStatus(); });
+    }).then(function () {
+      evaluateAll(universe);
+      state.status = 'ready'; state.lastUpdate = Date.now(); state.progress = '';
+      render();
+    }, function (err) {
+      state.status = 'error'; state.error = err; state.progress = '';
+      render();
+    }).then(function () { if (state.again) { state.again = false; return scan(); } });
+  }
+
+  function evaluateAll(universe) {
+    var c = cfg(), t = now(), interval = state.settings.interval, out = [];
+    universe.forEach(function (sym) {
+      var rows = state.rows[key(sym, interval)];
+      if (!rows || !rows.length) return;
+      var s = E.toSeries(rows), ind = E.indicators(s, c), lc = E.lastClosedIndex(s, t), hist = E.history(s, ind, c, lc);
+      var ev = E.evaluate(s, ind, c, t, hist), inf = state.info[sym] || {};
+      var m = { sym: sym, ev: ev, hist: hist, info: inf, stock: isStock(sym), vol: state.tickers[sym] ? +state.tickers[sym].quoteVolume : 0 };
+      if (ev.status === 'buy') m.plan = E.plan({ buyCeiling: ev.buyCeiling, stop: ev.stop }, account(), inf);
+      if (ev.status === 'watch') m.plan = E.plan({ buyCeiling: ev.trigger + c.buyZoneAtr * ev.atr, stop: ev.stop }, account(), inf);
+      if (sym === 'BTCUSDT') state.btc = ev;
+      out.push(m);
+    });
+    state.markets = out;
+    state.held = state.demo ? [] : state.positions.map(function (p) {
+      var rows = state.rows[key(p.symbol, p.interval)];
+      if (!rows || !rows.length) return { pos: p, missing: true };
+      var s = E.toSeries(rows), ind = E.indicators(s, c);
+      return { pos: p, m: E.managePosition(s, ind, c, p, t), info: state.info[p.symbol] || {} };
+    });
+  }
+
+  // ---------- demo data (made-up prices, clearly labelled) ----------
+  var DEMO = [
+    { sym: 'DEMOAUSDT', kind: 'buy', start: 40 }, { sym: 'DEMOBUSDT', kind: 'watch', start: 2.2 }, { sym: 'DEMOCUSDT', kind: 'running', start: 310 },
+    { sym: 'DEMODUSDT', kind: 'down', start: 0.85 }, { sym: 'DEMOEUSDT', kind: 'missed', start: 12 }, { sym: 'DEMOFUSDT', kind: 'flat', start: 96 }
+  ];
+  function rng(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  function demoTickers() {
+    return DEMO.map(function (d, i) { var r = demoCandles(d.sym, state.settings.interval); return { symbol: d.sym, lastPrice: String(r[r.length - 1][4]), quoteVolume: String(9e8 - i * 1e8) }; });
+  }
+  function demoCandles(sym, interval) {
+    var d = DEMO.filter(function (x) { return x.sym === sym; })[0] || DEMO[0], ms = E.INTERVAL_MS[interval], n = 420;
+    var rand = rng(sym.charCodeAt(4) * 7919), nowOpen = Math.floor(Date.now() / ms) * ms, closes = [], p = d.start, i;
+    function step(drift, vol) { p *= 1 + drift + (rand() - 0.5) * vol; closes.push(p); }
+    if (d.kind === 'down') { for (i = 0; i < n; i++) step(-0.0012, 0.012); }
+    else if (d.kind === 'flat') { for (i = 0; i < n; i++) step(Math.sin(i / 23) * 0.0018, 0.008); }
+    else {
+      for (i = 0; i < n - 70; i++) step(0.0022, 0.009);              // long uptrend
+      for (i = 0; i < 14; i++) step(-0.006, 0.004);                   // dip under the 50-EMA: the rule goes flat
+      for (i = 0; i < 12; i++) step(0.0035, 0.003);                   // recover
+      var top = p * 1.004;
+      if (d.kind === 'running') {
+        closes.push(p = top * 1.012);                                 // breakout, then a quiet climb
+        for (i = 0; i < 42; i++) step(0.0022, 0.004);
+        closes.push(p * 1.001);
+      } else {
+        var rangeTop = 0;
+        for (i = 0; i < 42; i++) { p = top * (0.972 + 0.016 * Math.abs(Math.sin(i / 3.1)) + (rand() - 0.5) * 0.003); closes.push(p); if (p > rangeTop) rangeTop = p; }
+        rangeTop *= 1.0012;                                           // highest high of the range
+        if (d.kind === 'watch') { closes.push(p = rangeTop * 0.996); closes.push(rangeTop * 0.998); }
+        else if (d.kind === 'buy') { closes.push(p = rangeTop * 1.008); closes.push(p * 1.001); }
+        else { closes.push(p = rangeTop * 1.008); closes.push(p * 1.06); }  // missed: ran away after the signal
+      }
+    }
+    var rows = [], prev = closes[0] * 0.999;
+    for (i = 0; i < closes.length; i++) {
+      var c = closes[i], o = prev, hi = Math.max(o, c) * (1 + rand() * 0.0025), lo = Math.min(o, c) * (1 - rand() * 0.0025);
+      if (d.kind !== 'down' && d.kind !== 'flat' && i >= closes.length - 44 && i < closes.length - 2 && d.kind !== 'running') hi = Math.min(hi, Math.max(o, c) * 1.0012);
+      var t = nowOpen - (closes.length - 1 - i) * ms;
+      rows.push([t, String(o), String(hi), String(lo), String(c), '1000', t + ms - 1]);
+      prev = c;
+    }
+    return rows;
+  }
+
+  // ---------- drawing: the price ladder ----------
+  /** marks: [{ v, label, kind: 'stop'|'exit'|'max'|'now'|'entry'|'trigger' }], band: [lo, hi] or null */
+  function ladder(marks, band, label) {
+    var W = 86, H = 150, top = 12, bot = 138, vals = marks.map(function (m) { return m.v; }).filter(isFinite);
+    if (band) vals = vals.concat(band);
+    var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals), span = hi - lo || hi * 0.01 || 1;
+    lo -= span * 0.06; hi += span * 0.06;
+    function y(v) { return top + (hi - v) / (hi - lo) * (bot - top); }
+    var items = marks.filter(function (m) { return isFinite(m.v); }).map(function (m) { return { m: m, y: y(m.v), ly: y(m.v) }; }).sort(function (a, b) { return a.y - b.y; });
+    for (var pass = 0; pass < 6; pass++) for (var i = 1; i < items.length; i++) if (items[i].ly - items[i - 1].ly < 13) items[i].ly = items[i - 1].ly + 13;
+    var over = items.length ? items[items.length - 1].ly - (H - 5) : 0;
+    if (over > 0) for (var q = items.length - 1; q >= 0; q--) { items[q].ly -= over; if (q > 0 && items[q].ly - items[q - 1].ly >= 13) break; }
+    var svg = '<svg class="ladder" viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" role="img" aria-label="' + esc(label) + '">';
+    svg += '<line class="l-axis" x1="15" y1="' + top + '" x2="15" y2="' + bot + '"/>';
+    if (band) svg += '<rect class="l-band" x="9" y="' + y(band[1]).toFixed(1) + '" width="12" height="' + Math.max(2, y(band[0]) - y(band[1])).toFixed(1) + '" rx="2"/>';
+    items.forEach(function (it) {
+      var k = it.m.kind, yy = it.y.toFixed(1);
+      if (k === 'now') svg += '<circle class="l-now" cx="15" cy="' + yy + '" r="5"/>';
+      else svg += '<line class="l-' + k + '" x1="5" y1="' + yy + '" x2="25" y2="' + yy + '"/>';
+      if (Math.abs(it.ly - it.y) > 1) svg += '<line class="l-lead" x1="27" y1="' + yy + '" x2="31" y2="' + (it.ly - 0.5).toFixed(1) + '"/>';
+      svg += '<text class="l-text" x="33" y="' + (it.ly + 3.5).toFixed(1) + '">' + esc(it.m.label) + '</text>';
+    });
+    return svg + '</svg>';
+  }
+
+  // ---------- rendering ----------
+  function $(id) { return document.getElementById(id); }
+  function chip(kind, text) {
+    var shape = { buy: '<path d="M6 1.5 11 10H1z"/>', sell: '<path d="M6 10.5 1 2h10z"/>', watch: '<circle cx="6" cy="6" r="4.4"/>', hold: '<rect x="1.8" y="1.8" width="8.4" height="8.4" rx="1.5"/>', none: '<rect x="1.5" y="5" width="9" height="2" rx="1"/>' }[kind];
+    return '<span class="chip chip-' + kind + '"><svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">' + shape + '</svg>' + esc(text) + '</span>';
+  }
+
+  function renderStatus() {
+    var el = $('status'), s = state.settings;
+    if (state.status === 'loading') el.textContent = state.progress + '…';
+    else if (state.status === 'ready') {
+      var ms = E.INTERVAL_MS[s.interval], next = Math.floor(now() / ms) * ms + ms, off = Math.round(Math.abs(state.skew) / 60000);
+      el.textContent = 'Checked at ' + clock(state.lastUpdate) + '. The next ' + INTERVAL_SHORT[s.interval] + ' candle closes at ' + clock(next - state.skew) + ', in ' + until(next) + '.' +
+        (off >= 2 ? ' Your device clock is about ' + off + ' min ' + (state.skew < 0 ? 'fast' : 'slow') + '; this page goes by Binance\'s clock.' : '');
+    } else if (state.status === 'error') el.textContent = state.lastUpdate ? 'Could not refresh. Showing prices from ' + clock(state.lastUpdate) + '.' : 'Could not load prices.';
+    else el.textContent = '';
+    $('refresh').disabled = state.status === 'loading';
+    $('refresh').textContent = state.status === 'loading' ? 'Checking…' : 'Check prices now';
+  }
+
+  function renderNotice() {
+    var h = '';
+    if (state.demo) h += '<div class="notice notice-demo" role="alert"><strong>Demo with made-up prices.</strong> These markets do not exist. Do not trade from this screen. <button class="link" data-act="demo-off">Leave the demo</button></div>';
+    if (state.status === 'error') {
+      var e = state.error || {}, head, body;
+      if (e.kind === 'limit') { head = 'Binance is asking this device to slow down.'; body = 'Wait a few minutes, then check again.'; }
+      else if (e.kind === 'blocked') { head = 'Binance refused the request from this network.'; body = 'Binance blocks some networks and VPN locations. Turn the VPN off or switch between Wi-Fi and mobile data, then try again.'; }
+      else { head = 'This page could not reach Binance.'; body = 'Check your connection and try again. If you are viewing this inside another app\'s preview, open it in your phone\'s browser instead: previews often block outside connections.'; }
+      if (state.lastUpdate) body += ' The levels below are from ' + clock(state.lastUpdate) + ' and may be out of date.';
+      h += '<div class="notice notice-error" role="alert"><strong>' + head + '</strong> ' + body +
+        '<div class="notice-actions"><button class="btn" data-act="refresh">Try again</button>' + (state.demo || state.lastUpdate ? '' : '<button class="btn btn-quiet" data-act="demo-on">See a demo with made-up prices</button>') + '</div></div>';
+    }
+    if (!state.canStore) h += '<div class="notice"><strong>Your pot and trades will not be saved here.</strong> This browser gives the page no storage, which is usual when a page is opened as a file. Open it from a web address to keep them between visits.</div>';
+    if (state.lastUpdate > 0 && !(+state.settings.pot > 0)) h += '<div class="notice"><strong>Add your pot to get order sizes.</strong> Tell the page how much money you trade with and how much of it one trade may lose. <a href="#settings" data-act="open-settings">Open settings</a></div>';
+    $('notice').innerHTML = h;
+  }
+
+  function renderSummary() {
+    if (!state.lastUpdate) { $('summary').innerHTML = ''; return; }
+    var n = { buy: 0, watch: 0, other: 0 }, s = state.settings, mine = heldSymbols();
+    state.markets.forEach(function (m) { if (mine[m.sym]) return; if (m.ev.status === 'buy') n.buy++; else if (m.ev.status === 'watch') n.watch++; else n.other++; });
+    var sells = state.held.filter(function (h) { return h.m && h.m.status !== 'hold'; }).length, holding = state.held.length - sells;
+    var btc = state.btc, mood = '';
+    if (btc && btc.status !== 'short' && !state.demo) mood = btc.trendUp ? 'Bitcoin is in an uptrend on ' + INTERVAL_NAME[s.interval] + ' candles.' : 'Bitcoin is in a downtrend on ' + INTERVAL_NAME[s.interval] + ' candles, so expect few buy signals.';
+    var line = (sells ? sells + ' to sell, ' : '') + n.buy + ' to buy, ' + n.watch + ' to watch, ' + n.other + ' with nothing to do' + (holding ? ', ' + holding + ' held' : '');
+    $('summary').innerHTML = '<p class="tally">' + esc(line) + '</p><p class="mood">' + esc('Scanned ' + state.markets.length + ' markets on ' + INTERVAL_NAME[s.interval] + ' candles. ' + mood) + '</p>';
+  }
+
+  function heldSymbols() { var o = {}; if (!state.demo) state.positions.forEach(function (p) { o[p.symbol] = 1; }); return o; }
+
+  function rowLine(label, value, sub) {
+    var subs = [].concat(sub || []).filter(Boolean).map(function (x) { return '<span class="sub">' + x + '</span>'; }).join('');
+    return '<div class="row"><dt>' + esc(label) + '</dt><dd>' + value + subs + '</dd></div>';
+  }
+
+  function recordLine(m) {
+    var st = m.hist.stats;
+    if (!st.trades) return 'The rule has no finished trades here in the loaded history.';
+    return 'The rule here, last ' + Math.round((m.hist.to - m.hist.from) / 86400000) + ' days: ' + st.trades + ' trades, ' + st.wins + ' won, ' + rmult(st.sumR) + ' in total. ' + (st.trades < 20 ? 'Too few to judge.' : E.verdict(st).text + '.');
+  }
+
+  function buyTicket(m) {
+    var ev = m.ev, pl = m.plan || {}, inf = m.info, p = pair(m.sym), iv = state.settings.interval;
+    var lad = ladder([{ v: pl.maxBuy || ev.buyCeiling, label: 'max buy', kind: 'max' }, { v: ev.price, label: 'now', kind: 'now' }, { v: ev.exitLine, label: 'sell line', kind: 'exit' }, { v: pl.stop || ev.stop, label: 'stop', kind: 'stop' }],
+      [Math.min(ev.level, ev.signalClose), pl.maxBuy || ev.buyCeiling], 'Price ladder for ' + name(m.sym) + ': now ' + price(ev.price, inf.tickSize) + ', buy up to ' + price(pl.maxBuy || ev.buyCeiling, inf.tickSize) + ', stop ' + price(pl.stop || ev.stop, inf.tickSize));
+    var rows = rowLine('Buy at up to', '<b class="fig">' + price(pl.maxBuy || ev.buyCeiling, inf.tickSize) + '</b>', 'now ' + price(ev.price, inf.tickSize)) +
+      rowLine('Stop-loss', '<b class="fig">' + price(pl.stop || ev.stop, inf.tickSize) + '</b>', [isFinite(pl.stopDistPct) ? pct(-pl.stopDistPct) + ' from the buy price' : '',
+        isFinite(pl.stopLimit) ? 'limit price for the stop order: ' + price(pl.stopLimit, inf.tickSize) : '']);
+    if (pl.ok) {
+      rows += rowLine('Amount', '<b class="fig">' + qty(pl.qty, inf.stepSize) + ' ' + esc(p.base) + '</b>', 'about ' + money(pl.cost) + ' ' + esc(p.quote || 'USDT') + ', ' + pl.potSharePct.toFixed(0) + '% of your pot') +
+        rowLine('If the stop is hit', '<b class="fig">−' + money(pl.lossAtStop) + ' ' + esc(p.quote || 'USDT') + '</b>', pl.potRiskPct.toFixed(1) + '% of your pot, fees included' + (pl.capped ? '. Size is limited by your pot' : ''));
+    } else if (pl.problem) rows += rowLine('Amount', '<span class="warn-text">' + esc(pl.problem) + '</span>');
+    rows += rowLine('Sell when', 'a ' + INTERVAL_SHORT[iv] + ' candle closes under <b class="fig">' + price(ev.exitLine, inf.tickSize) + '</b>',
+      ev.exitLine < (pl.stop || ev.stop) ? 'for now that is under your stop-loss, so the stop comes first; the line rises as the trend continues' : 'this line moves up as the trend continues');
+    var id = 'f-' + m.sym, form = state.form === id ? boughtForm(m, id) : '';
+    return '<article class="ticket ticket-buy" id="t-' + esc(m.sym) + '"><header class="t-head"><h3>' + esc(name(m.sym)) + (m.stock ? ' <span class="tag">stock token</span>' : '') + '</h3>' + chip('buy', 'Buy') +
+      '<p class="t-why">' + esc(ev.reason) + '. Signal candle closed ' + ago(ev.signalTime + E.INTERVAL_MS[iv]) + '.' + (m.stock ? ' This is a stock token; the rule was tested on coins only.' : '') + '</p></header>' +
+      '<div class="t-body">' + lad + '<dl class="rows">' + rows + '</dl></div>' +
+      (state.demo ? '' : '<div class="t-actions"><button class="btn" data-act="bought" data-id="' + id + '">I bought this</button></div>' + form) +
+      '<p class="t-record">' + esc(recordLine(m)) + '</p></article>';
+  }
+
+  function boughtForm(m, id) {
+    var ev = m.ev, pl = m.plan || {}, inf = m.info;
+    return '<form class="form" data-form="bought" data-sym="' + esc(m.sym) + '" novalidate><p class="form-title">Record your purchase so this page can tell you when to sell.</p>' +
+      '<label>Price you paid<input name="entry" inputmode="decimal" autocomplete="off" required value="' + (isFinite(ev.price) ? (inf.tickSize > 0 ? ev.price.toFixed(E.decimalsOf(inf.tickSize)) : ev.price) : '') + '"></label>' +
+      '<label>Amount you bought<input name="qty" inputmode="decimal" autocomplete="off" value="' + (pl.ok ? pl.qty : '') + '"></label>' +
+      '<label>Your stop-loss price<input name="stop" inputmode="decimal" autocomplete="off" required value="' + (pl.stop || (isFinite(ev.stop) ? ev.stop : '')) + '"></label>' +
+      '<p class="form-error" hidden></p><div class="form-actions"><button class="btn" type="submit">Save trade</button><button class="btn btn-quiet" type="button" data-act="cancel-form">Cancel</button></div></form>';
+  }
+
+  function heldCard(h) {
+    var p = h.pos, pr = pair(p.symbol);
+    if (h.missing) return '<article class="ticket"><header class="t-head"><h3>' + esc(name(p.symbol)) + '</h3>' + chip('none', 'No data') + '<p class="t-why">No price data came back for this market.</p></header><div class="t-actions"><button class="btn btn-quiet" data-act="remove" data-pid="' + esc(p.id) + '">Remove</button></div></article>';
+    var m = h.m, inf = h.info, sell = m.status !== 'hold', iv = p.interval;
+    var why = m.status === 'sell' ? 'A ' + INTERVAL_SHORT[iv] + ' candle closed under the sell line (' + clock(m.eventTime + E.INTERVAL_MS[iv]) + '). The rule says sell now: cancel your stop order, then sell at market.'
+      : m.status === 'stopped' ? 'Price traded at or under your stop (' + clock(m.eventTime) + '). If your stop order filled, record the sale. If you had no stop order, the rule says sell now.'
+      : 'Still above the sell line. Keep your stop order in place and check again after the next candle closes.';
+    var lad = ladder([{ v: m.price, label: 'now', kind: 'now' }, { v: p.entry, label: 'paid', kind: 'entry' }, { v: m.exitLine, label: 'sell line', kind: 'exit' }, { v: p.stop, label: 'stop', kind: 'stop' }], null,
+      'Price ladder for your ' + name(p.symbol) + ' trade: now ' + price(m.price, inf.tickSize) + ', paid ' + price(p.entry, inf.tickSize) + ', sell line ' + price(m.exitLine, inf.tickSize) + ', stop ' + price(p.stop, inf.tickSize));
+    var pnlMoney = p.qty > 0 ? (m.price - p.entry) * p.qty : NaN;
+    var rows = rowLine('Now', '<b class="fig">' + price(m.price, inf.tickSize) + '</b>', pct(m.pnlPct, true) + ' on the price you paid' + (isFinite(pnlMoney) ? ', ' + (pnlMoney < 0 ? '−' : '+') + money(pnlMoney) + ' ' + esc(pr.quote || 'USDT') + ' before fees' : '')) +
+      rowLine('Sell line', '<b class="fig">' + price(m.exitLine, inf.tickSize) + '</b>', m.status === 'sell' ? 'a ' + INTERVAL_SHORT[iv] + ' candle has closed under it' : 'sell when a ' + INTERVAL_SHORT[iv] + ' candle closes under it') +
+      rowLine('Stop-loss', '<b class="fig">' + price(p.stop, inf.tickSize) + '</b>', 'your resting stop order') +
+      rowLine('Held', m.held + ' candles', 'bought ' + ago(p.t) + ' at ' + price(p.entry, inf.tickSize) + (p.qty > 0 ? ', ' + qty(p.qty, inf.stepSize) + ' ' + esc(pr.base) : ''));
+    var id = 's-' + p.id, form = state.form === id ? soldForm(h, id) : '';
+    return '<article class="ticket ' + (sell ? 'ticket-sell' : 'ticket-hold') + '"><header class="t-head"><h3>' + esc(name(p.symbol)) + '</h3>' + (sell ? chip('sell', m.status === 'sell' ? 'Sell now' : 'Stop hit') : chip('hold', 'Hold')) +
+      '<p class="t-why">' + esc(why) + '</p></header><div class="t-body">' + lad + '<dl class="rows">' + rows + '</dl></div>' +
+      '<div class="t-actions"><button class="btn' + (sell ? '' : ' btn-quiet') + '" data-act="sold" data-id="' + id + '">I sold this</button><button class="btn btn-quiet" data-act="remove" data-pid="' + esc(p.id) + '">Remove</button></div>' + form + '</article>';
+  }
+
+  function soldForm(h, id) {
+    var inf = h.info, px = h.m.price;
+    return '<form class="form" data-form="sold" data-pid="' + esc(h.pos.id) + '" novalidate><p class="form-title">Record the sale to keep your results.</p>' +
+      '<label>Price you sold at<input name="exit" inputmode="decimal" autocomplete="off" required value="' + (isFinite(px) ? (inf.tickSize > 0 ? px.toFixed(E.decimalsOf(inf.tickSize)) : px) : '') + '"></label>' +
+      '<p class="form-error" hidden></p><div class="form-actions"><button class="btn" type="submit">Save sale</button><button class="btn btn-quiet" type="button" data-act="cancel-form">Cancel</button></div></form>';
+  }
+
+  function watchItem(m) {
+    var ev = m.ev, inf = m.info, away = (ev.trigger / ev.price - 1) * 100;
+    return '<li class="line"><div class="line-head"><h3>' + esc(name(m.sym)) + (m.stock ? ' <span class="tag">stock token</span>' : '') + '</h3>' + chip('watch', 'Watch') + '</div>' +
+      '<p>Buy only if ' + (ev.above ? 'this ' : 'a ') + INTERVAL_SHORT[state.settings.interval] + ' candle closes above <b class="fig">' + price(ev.trigger, inf.tickSize) + '</b>. Now ' + price(ev.price, inf.tickSize) + ', ' + Math.abs(away).toFixed(1) + '% ' + (ev.above ? 'over' : 'under') + ' it. The stop would sit near ' + price(ev.stop, inf.tickSize) + '.</p></li>';
+  }
+
+  function quietItem(m) {
+    var ev = m.ev, inf = m.info, label = ev.status === 'missed' ? 'Missed' : ev.status === 'running' ? 'Already moving' : 'No trade';
+    return '<li class="line line-quiet"><div class="line-head"><h3>' + esc(name(m.sym)) + (m.stock ? ' <span class="tag">stock token</span>' : '') + '</h3>' + chip('none', label) + '</div><p>' + esc(ev.reason) + '.' + (isFinite(ev.price) ? ' Now ' + price(ev.price, inf.tickSize) + '.' : '') + '</p></li>';
+  }
+
+  function section(id, title, body, note) { $(id).innerHTML = body ? '<h2>' + esc(title) + '</h2>' + (note ? '<p class="sec-note">' + note + '</p>' : '') + body : ''; }
+
+  function formKey(f) { return f.getAttribute('data-form') + '|' + (f.getAttribute('data-sym') || f.getAttribute('data-pid') || ''); }
+  function openTradeForm() { return document.querySelector('form[data-form="bought"], form[data-form="sold"]'); }
+
+  function renderLists() {
+    var before = openTradeForm(), kept = null;
+    if (before) { kept = { key: formKey(before), values: {} }; Array.prototype.forEach.call(before.elements, function (el) { if (el.name) kept.values[el.name] = el.value; }); }
+    drawLists();
+    var after = kept && openTradeForm();
+    if (after && formKey(after) === kept.key) Array.prototype.forEach.call(after.elements, function (el) { if (el.name && kept.values[el.name] !== undefined) el.value = kept.values[el.name]; });
+  }
+
+  function drawLists() {
+    if (!state.lastUpdate) { ['alerts', 'buys', 'holds', 'watch', 'others'].forEach(function (id) { $(id).innerHTML = ''; }); return; }
+    var sells = state.held.filter(function (h) { return h.m && h.m.status !== 'hold'; }), holds = state.held.filter(function (h) { return !h.m || h.m.status === 'hold'; });
+    var mine = heldSymbols(), by = function (st) { return state.markets.filter(function (m) { return m.ev.status === st && !mine[m.sym]; }); };
+    var buys = by('buy'), watch = by('watch'), moving = by('missed').concat(by('running')), none = by('none').concat(by('short'));
+    section('alerts', 'Sell', sells.map(heldCard).join(''));
+    section('buys', 'Buy', buys.length ? buys.map(buyTicket).join('') : '<p class="empty">No buy signals right now. That is normal: this rule waits, and most checks end here.</p>');
+    section('holds', 'Your trades', holds.map(heldCard).join(''));
+    section('watch', 'Watch', watch.length ? '<ul class="lines">' + watch.map(watchItem).join('') + '</ul>' : '', 'Close to a signal, not one yet.');
+    var quiet = '';
+    if (moving.length) quiet += '<details' + (state.open.moving ? ' open' : '') + ' data-key="moving"><summary>Already moving, too late to buy (' + moving.length + ')</summary><ul class="lines">' + moving.map(quietItem).join('') + '</ul></details>';
+    if (none.length) quiet += '<details' + (state.open.none ? ' open' : '') + ' data-key="none"><summary>Nothing to do (' + none.length + ')</summary><ul class="lines">' + none.map(quietItem).join('') + '</ul></details>';
+    section('others', 'The rest', quiet);
+  }
+
+  function renderRecord() {
+    var live = '';
+    if (state.lastUpdate > 0 && state.markets.length && !state.demo) {
+      var st = E.combineStats(state.markets.map(function (m) { return m.hist.stats; })), days = 0, cnt = 0, inTrade = 0;
+      state.markets.forEach(function (m) { if (isFinite(m.hist.to - m.hist.from)) { days += (m.hist.to - m.hist.from) / 86400000; cnt++; } if (m.hist.open) inTrade++; });
+      live = '<p><strong>On the prices loaded now</strong> (about ' + Math.round(days / Math.max(1, cnt)) + ' days for each of ' + state.markets.length + ' markets): ' +
+        (st.trades ? st.trades + ' finished trades, ' + Math.round(st.winRate * 100) + '% won, ' + rmult(st.avgR) + ' on average. ' + E.verdict(st).text + '.' : 'no finished trades.') +
+        ' The rule would be holding ' + inTrade + ' of them right now.</p>';
+    }
+    $('record').innerHTML = '<h2>How this rule has done</h2>' + live +
+      '<p>Tested on real Binance prices for 12 large coins, May 2023 to May 2025, with fees and slippage taken off. R is the amount you risk on one trade, so +0.47R means the average trade made 47% of what it risked.</p>' +
+      '<div class="table-wrap"><table><thead><tr><th scope="col">Candle size</th><th scope="col">First year</th><th scope="col">Second year</th></tr></thead><tbody>' +
+      '<tr><th scope="row">15 minutes (day trading)</th><td>lost, every version</td><td>lost, every version</td></tr>' +
+      '<tr><th scope="row">1 hour</th><td>+0.01R</td><td>+0.10R</td></tr>' +
+      '<tr><th scope="row">2 hours</th><td>+0.23R</td><td>+0.18R</td></tr>' +
+      '<tr><th scope="row">4 hours</th><td>+0.73R</td><td>+0.47R</td></tr>' +
+      '<tr><th scope="row">1 day</th><td>+1.01R (24 trades)</td><td>+0.95R (39 trades)</td></tr></tbody></table></div>' +
+      '<ul class="plain"><li>Only about 3 trades in 10 won. A few large winners paid for many small losses, and the worst run was 23 losing trades in a row.</li>' +
+      '<li>That is why there is no fixed sell price. Versions with a fixed profit target lost money; the rule holds a winner until the trend breaks. On 4-hour candles a losing trade lasted about 2 days and a winner about 11.</li>' +
+      '<li>Those two years were a rising market: the average coin gained 84% and then 76%. The first half of 2025 fell, and the 4-hour rule lost a little in it.</li>' +
+      '<li>In a falling market expect long stretches with no buy signals, and small losses on the ones that fail. A past test is not a promise.</li></ul>';
+  }
+
+  function renderHowTo() {
+    var iv = INTERVAL_SHORT[state.settings.interval];
+    $('howto').innerHTML = '<details' + (state.open.howto ? ' open' : '') + ' data-key="howto"><summary>How to place a trade on Binance</summary><ol class="steps">' +
+      '<li>Open the pair on Binance Spot. Choose Limit, set the price at the current price and never above “Buy at up to”, enter the Amount from the ticket, and buy. If price is already above “Buy at up to”, skip the trade.</li>' +
+      '<li>As soon as it fills, place the protective order: Sell, Stop Limit. Stop is the stop-loss price, Limit is the limit price shown under it, Amount is 100%. The amount will be a touch less than you bought, because Binance takes its fee in the coin.</li>' +
+      '<li>Tap “I bought this” here and enter the price you paid.</li>' +
+      '<li>Check this page a few times a day, best just after a candle closes; the top of the page says when. A ' + iv + ' candle has to close under the sell line before the rule sells, so nothing needs doing in between.</li>' +
+      '<li>When this page says “Sell now”, cancel the Stop Limit order first, because it locks your coins, then sell at Market. Tap “I sold this”.</li>' +
+      '<li>If the stop order fills while you are away, the trade is over. Tap “I sold this” and enter the stop price.</li></ol></details>';
+  }
+
+  function renderSettings() {
+    var s = state.settings, host = $('settings'), opt = function (v, cur, label) { return '<option value="' + v + '"' + (String(v) === String(cur) ? ' selected' : '') + '>' + label + '</option>'; };
+    var closed = '';
+    if (state.closed.length) {
+      var tot = 0; state.closed.forEach(function (c) { if (isFinite(c.pnl)) tot += c.pnl; });
+      closed = '<h3 class="sub-h">Your finished trades</h3><p>' + state.closed.length + ' recorded, ' + (tot < 0 ? '−' : '+') + money(tot) + ' in total before fees.</p><ul class="closed">' +
+        state.closed.slice(-8).reverse().map(function (c) { return '<li>' + esc(name(c.symbol)) + ': bought ' + esc(String(c.entry)) + ', sold ' + esc(String(c.exit)) + ', ' + pct((c.exit / c.entry - 1) * 100, true) + '</li>'; }).join('') + '</ul><button class="btn btn-quiet" data-act="clear-closed">Clear this list</button>';
+    }
+    if (state.dirty && host.firstChild) {                       // unsaved edits in the form: leave it alone, refresh only the trade list
+      var box = host.querySelector('.closed-box'); if (box) box.innerHTML = closed;
+      return;
+    }
+    var lost = state.lastUpdate > 0 && !state.demo ? (s.watch || []).filter(function (x) { return !state.tickers[x]; }) : [];
+    var unknown = lost.length ? '<span class="hint warn-text">Not on Binance spot right now: ' + esc(lost.join(', ')) + '.</span>' : '';
+    host.innerHTML = '<details' + (state.open.settings ? ' open' : '') + ' data-key="settings"><summary>Settings</summary><form class="form form-settings" data-form="settings" novalidate>' +
+      '<label>Your pot, in USDT<input name="pot" inputmode="decimal" autocomplete="off" placeholder="for example 500" value="' + esc(s.pot) + '"><span class="hint">The money you trade with. Used only to work out order sizes. It stays on this device.</span></label>' +
+      '<label>Risk on one trade, % of pot<input name="riskPct" inputmode="decimal" autocomplete="off" value="' + esc(s.riskPct) + '"><span class="hint">What one stopped-out trade may cost. 1 is a common choice; the tests above used 1.</span></label>' +
+      '<label>Fee per side, %<input name="feePct" inputmode="decimal" autocomplete="off" value="' + esc(s.feePct) + '"><span class="hint">0.1 is Binance\'s standard spot fee; 0.075 if you pay fees in BNB.</span></label>' +
+      '<label>Candle size<select name="interval">' + opt('1h', s.interval, '1 hour (about break-even in tests)') + opt('2h', s.interval, '2 hours') + opt('4h', s.interval, '4 hours (tested best with enough trades)') + opt('1d', s.interval, '1 day (few trades)') + '</select></label>' +
+      '<label>Markets to scan<select name="topN">' + opt(15, s.topN, '15 busiest') + opt(25, s.topN, '25 busiest') + opt(40, s.topN, '40 busiest') + opt(100, s.topN, '100 busiest (slower)') + opt(1000, s.topN, 'All USDT coins (first load takes a few minutes)') + '</select></label>' +
+      '<label>Smallest 24-hour volume, million USDT<input name="minVolM" inputmode="decimal" autocomplete="off" value="' + esc(s.minVolM) + '"><span class="hint">Thinly traded coins have wide spreads. 10 keeps to busy markets; with all coins, 1 lets in many more.</span></label>' +
+      '<label>Extra symbols to include<input name="watch" autocomplete="off" autocapitalize="characters" placeholder="for example NVDABUSDT, PAXGUSDT" value="' + esc((s.watch || []).join(', ')) + '"><span class="hint">Binance spot symbols, separated by commas, written as Binance shows them without the slash.</span>' + unknown + '</label>' +
+      '<div class="form-actions"><button class="btn" type="submit">Save and check prices</button><button class="btn btn-quiet" type="button" data-act="add-stocks">Add stock tokens</button></div>' +
+      '<p class="hint">Stock tokens are Binance\'s tokens for US shares such as Nvidia and Tesla. The button adds the busiest ones Binance lists.</p>' +
+      '<p class="form-error" hidden></p></form><div class="closed-box">' + closed + '</div></details>';
+  }
+
+  function render() { renderStatus(); renderNotice(); renderSummary(); renderLists(); renderRecord(); renderHowTo(); renderSettings(); }
+
+  // ---------- actions ----------
+  function num(v) { var x = parseFloat(String(v).replace(/,/g, '').trim()); return isFinite(x) ? x : NaN; }
+  function showError(form, msg) { var el = form.querySelector('.form-error'); el.textContent = msg; el.hidden = false; }
+
+  document.addEventListener('click', function (ev) {
+    var t = ev.target.closest('[data-act]'); if (!t) return;
+    var act = t.getAttribute('data-act');
+    if (act === 'refresh') scan();
+    else if (act === 'demo-on' || act === 'demo-off') {
+      state.demo = act === 'demo-on'; state.skew = 0; state.rows = {}; state.info = {}; state.tickers = {}; state.markets = []; state.held = []; state.lastUpdate = 0; state.btc = null;
+      render(); scan();
+    }
+    else if (act === 'open-settings') { state.open.settings = true; var det = document.querySelector('#settings details'); if (det) det.open = true; else renderSettings(); }
+    else if (act === 'bought' || act === 'sold') { state.form = state.form === t.getAttribute('data-id') ? null : t.getAttribute('data-id'); renderLists(); var f = document.querySelector('.form[data-form="' + act + '"] input'); if (f) f.focus(); }
+    else if (act === 'cancel-form') { state.form = null; renderLists(); refreshIfOld(); }
+    else if (act === 'remove') { state.positions = state.positions.filter(function (p) { return p.id !== t.getAttribute('data-pid'); }); save(); evaluateAll(state.markets.map(function (m) { return m.sym; })); render(); }
+    else if (act === 'clear-closed') { state.closed = []; save(); renderSettings(); }
+    else if (act === 'add-stocks') {
+      var f2 = t.closest('form'), inp = f2.querySelector('[name="watch"]'), cur = inp.value.toUpperCase().split(/[\s,]+/).filter(Boolean);
+      var found = stockPicks();
+      if (!found.length) { showError(f2, state.demo ? 'Leave the demo first: it has no real markets.' : state.lastUpdate ? 'Binance shows no stock tokens with enough trading right now, as seen from this device.' : 'Prices have not loaded yet. Check prices first, then add stock tokens.'); return; }
+      found.forEach(function (x) { if (cur.indexOf(x) === -1) cur.push(x); });
+      inp.value = cur.join(', ');
+      submitSettings(f2);
+    }
+  });
+
+  /** Stock tokens worth scanning: the known large ones that Binance lists now with real trading, busiest first. */
+  function stockPicks() {
+    return STOCK_PICKS.map(function (b) { return state.tickers[b + 'USDT']; }).filter(function (x) { return x && +x.lastPrice > 0 && +x.quoteVolume >= STOCK_MIN_VOL; })
+      .sort(function (a, b) { return b.quoteVolume - a.quoteVolume; }).slice(0, STOCK_MAX).map(function (x) { return x.symbol; });
+  }
+
+  function onEdit(ev) { if (ev.target.closest && ev.target.closest('form[data-form="settings"]')) state.dirty = true; }
+  document.addEventListener('input', onEdit);
+  document.addEventListener('change', onEdit);
+
+  document.addEventListener('toggle', function (ev) { var k = ev.target.getAttribute && ev.target.getAttribute('data-key'); if (k) state.open[k] = ev.target.open; }, true);
+
+  function submitSettings(form) {
+    var pot = form.pot.value.trim() === '' ? '' : num(form.pot.value), risk = num(form.riskPct.value), fee = num(form.feePct.value), minV = num(form.minVolM.value);
+    if (pot !== '' && !(pot > 0)) return showError(form, 'Your pot has to be a number above zero, or left empty.');
+    if (!(risk > 0 && risk <= 5)) return showError(form, 'Risk on one trade has to be between 0 and 5 percent.');
+    if (!(fee >= 0 && fee <= 1)) return showError(form, 'Fee per side has to be between 0 and 1 percent.');
+    if (!(minV >= 0)) return showError(form, 'Smallest volume has to be zero or more.');
+    var changed = form.interval.value !== state.settings.interval;
+    state.settings.pot = pot; state.settings.riskPct = risk; state.settings.feePct = fee; state.settings.minVolM = minV;
+    state.settings.interval = form.interval.value; state.settings.topN = +form.topN.value;
+    state.settings.watch = form.watch.value.toUpperCase().split(/[\s,]+/).map(function (s) { return s.replace(/[^A-Z0-9]/g, ''); }).filter(function (s, i, a) { return s && a.indexOf(s) === i; }).slice(0, 30);
+    if (changed) state.markets = [];
+    state.dirty = false;
+    save(); renderSettings(); scan();
+  }
+
+  document.addEventListener('submit', function (ev) {
+    var form = ev.target, kind = form.getAttribute('data-form'); if (!kind) return;
+    ev.preventDefault();
+    if (kind === 'settings') { submitSettings(form); return; }
+    if (kind === 'bought') {
+      var sym = form.getAttribute('data-sym'), entry = num(form.entry.value), stop = num(form.stop.value), q = form.qty.value.trim() === '' ? 0 : num(form.qty.value);
+      if (!(entry > 0)) return showError(form, 'Enter the price you paid.');
+      if (!(stop > 0 && stop < entry)) return showError(form, 'The stop-loss has to be under the price you paid.');
+      if (!(q >= 0)) return showError(form, 'Amount has to be a number, or left empty.');
+      state.positions.push({ id: 'p' + Date.now().toString(36), symbol: sym, interval: state.settings.interval, t: now(), entry: entry, stop: stop, qty: q });
+      state.form = null; save(); evaluateAll(state.markets.map(function (m) { return m.sym; })); render(); refreshIfOld();
+      return;
+    }
+    if (kind === 'sold') {
+      var pid = form.getAttribute('data-pid'), exit = num(form.exit.value), pos = state.positions.filter(function (p) { return p.id === pid; })[0];
+      if (!(exit > 0)) return showError(form, 'Enter the price you sold at.');
+      if (pos) {
+        state.closed.push({ symbol: pos.symbol, entry: pos.entry, exit: exit, qty: pos.qty, t: pos.t, tExit: Date.now(), pnl: pos.qty > 0 ? (exit - pos.entry) * pos.qty : NaN });
+        state.positions = state.positions.filter(function (p) { return p.id !== pid; });
+      }
+      state.form = null; save(); evaluateAll(state.markets.map(function (m) { return m.sym; })); render(); refreshIfOld();
+    }
+  });
+
+  // Refresh when the page comes back to the front after a while, and every 5 minutes while it is open.
+  // Never while a trade form is open: redrawing would take the keyboard away mid-entry.
+  function refreshIfOld() { if (!document.hidden && state.status !== 'loading' && !state.form && Date.now() - state.lastUpdate > 120000) scan(); }
+  document.addEventListener('visibilitychange', refreshIfOld);
+  setInterval(function () { if (!document.hidden && state.status === 'ready' && !state.form && Date.now() - state.lastUpdate > 290000) scan(); }, 30000);
+  setInterval(function () { if (state.status === 'ready') renderStatus(); }, 30000);
+
+  state.canStore = storageWorks(); load(); render(); scan();
+  window.SignalDesk = { state: state, scan: scan, demoCandles: demoCandles, DEMO: DEMO };
+})();
+
+</script>
+</body>
+</html>
